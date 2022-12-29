@@ -57,9 +57,20 @@ def pytorch(args, config):
     val_loader = DataLoader(val_data, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True, shuffle=True)
 
-    ### MODEL SETUP ###
+    ### TRAINING SETUP ###
+    # Load model
     num_classes = 2 if args.classify_malignant else 78  # 78 diagnoses in DDI
     model = load_model(model_name='DeepDerm', num_classes=num_classes)
+    # Set up optimizer
+    children_to_fine_tune = {'first_conv': list(model.children())[0],  # Conv2d_1a_3x3
+                             'first_block': list(model.children())[0:4],  # include up to maxpool1
+                             'before_inception_modules': list(model.children())[0:7],  # ... maxpool2
+                             'first_inception_module': list(model.children())[0:8],  # ... 1st inception module
+                             }
+    params_to_fine_tune = []
+    for child in children_to_fine_tune[args.finetune_mode]:
+        params_to_fine_tune += [param for param in child.parameters()]
+    optimizer = torch.optim.Adam(params_to_fine_tune, lr=1e-4)  # match DDI experiments learning rate
 
     # !!! TO DO !!!
     ### TRAINING LOOP ###
@@ -77,7 +88,8 @@ def pytorchlightning(args, config):
                                  skin_tone,
                                  malignant,
                                  diseases)
-    model = DDI_DeepDerm(classify_malignant=args.classify_malignant)
+    model = DDI_DeepDerm(classify_malignant=args.classify_malignant,
+                         mode=args.finetune_mode)
     trainer = pl.Trainer(max_epochs=500)  # to match DDI experiments
     trainer.fit(model, data_module)
 
@@ -90,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--random_seed', type=int, default=0)
     parser.add_argument('--classify_malignant', type=bool, default=True)
+    parser.add_argument('--finetune_mode', type=str, default='first_conv')
     args = parser.parse_args()
 
     # Config
