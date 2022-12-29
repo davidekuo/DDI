@@ -80,11 +80,12 @@ class DDI_DeepDerm(pl.LightningModule):
     Inception_v3: https://github.com/pytorch/vision/blob/32d254bbfcf14975f846765775584e61ef25a5bc/torchvision/models/inception.py#L103
     Conv2d_1a_3x3 -> Conv2d_2a_3x3 -> Conv2d_2b_3x3 -> maxpool1 -> Conv2d_3b_1x1 -> Conv2d_4a_3x3 -> maxpool2 -> Inception Modules ...
     """
-        children_to_fine_tune = {'first_conv': list(self.model.children())[0],  # Conv2d_1a_3x3
+        children_to_fine_tune = {'first_conv': list(self.model.children())[0:1],  # Conv2d_1a_3x3
                                  'first_block': list(self.model.children())[0:4],  # include up to maxpool1
                                  'before_inception_modules': list(self.model.children())[0:7],  # ... maxpool2
                                  'first_inception_module': list(self.model.children())[0:8],  # ... 1st inception module
                                  }
+        
         params_to_fine_tune = []
         for child in children_to_fine_tune[self.mode]:
             params_to_fine_tune += [param for param in child.parameters()]
