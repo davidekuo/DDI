@@ -133,5 +133,6 @@ dmypy.json
 
 # Other files/directories
 data/
+model/
 papers/
 DDI_scratchpad.ipynb

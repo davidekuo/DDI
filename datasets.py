@@ -141,7 +141,7 @@ class DDI_DataModule(pl.LightningDataModule):
     def prepare_data(self):
         pass
 
-    def setup(self):
+    def setup(self, stage: str = None):  # 'fit', 'validate', 'test', 'predict'
         self.train_data, self.val_data, self.test_data = random_split(self.dataset,
                                                                       [0.6, 0.2, 0.2],
                                                                       generator=torch.Generator().manual_seed(
