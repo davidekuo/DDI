@@ -2,6 +2,7 @@ import os
 import torch
 import torchvision
 import gdown
+import pytorch_lightning as pl
 
 """Copied from DDI-Code"""
 # google drive paths to our models
