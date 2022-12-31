@@ -21,15 +21,15 @@ test_transform = T.Compose([
 
 def params_to_list(params, defaults: list):
     """
-  Helper function for DDI_DataModule class
+    Helper function for DDI_DataModule class
 
-  Args:
+    Args:
     - params (Any): parameters to convert into a list (may already be a list)
     - defaults (list): list of default parameters to return if params is None
-  
-  Returns:
-    list of parameters
-  """
+
+    Returns:
+    - list of parameters
+    """
     if params is None:
         return defaults
     else:
@@ -38,16 +38,16 @@ def params_to_list(params, defaults: list):
 
 class DDI_Dataset(Dataset):
     """
-  PyTorch Dataset class for Diverse Dermatology Images dataset
-  """
+    PyTorch Dataset class for Diverse Dermatology Images dataset
+    """
 
     def __init__(self, annotations_df, img_dir, transform=None):
         """
-    Args:
-      - annotations_df (Pandas DataFrame): DataFrame of annotations for dataset
-      - img_dir (str): path to directory storing DDI images
-      - transform (torchvision.transforms): torchvision transforms for dataset images
-    """
+        Args:
+          - annotations_df (Pandas DataFrame): DataFrame of annotations for dataset
+          - img_dir (str): path to directory storing DDI images
+          - transform (torchvision.transforms): torchvision transforms for dataset images
+        """
         super().__init__()
         self.annotations = annotations_df
         self.img_dir = img_dir  # './ddi_data/'
@@ -59,13 +59,13 @@ class DDI_Dataset(Dataset):
 
     def __getitem__(self, idx):
         """
-    For idx-th data point, returns:
-      - image (Tensor): PyTorch tensor representation of DDI image
-      - skin_tone (int): FST category [12, 34, 56]
-      - malignant (bool): True if lesion is malignant, False if not
-      - disease (string): diagnosis of lesion
-      - disease_label (int): int label corresponding to disease
-    """
+        For idx-th data point, returns:
+          - image (Tensor): PyTorch tensor representation of DDI image
+          - skin_tone (int): FST category [12, 34, 56]
+          - malignant (bool): True if lesion is malignant, False if not
+          - disease (string): diagnosis of lesion
+          - disease_label (int): int label corresponding to disease
+        """
         img_path = self.img_dir + os.sep + self.annotations.loc[idx, 'DDI_file']  # str
         image = read_image(img_path)  # Tensor
         skin_tone = self.annotations.loc[idx, 'skin_tone']  # int
@@ -93,17 +93,17 @@ class DDI_DataModule(pl.LightningDataModule):
                  malignant=None,
                  diseases=None):
         """
-    Args:
-      - random_seed (int): random seed for generating train/val/test splits
-      - batch_size (int): batch size for DataLoader
-      - num_workers (int): num_workers for DataLoader
-      - metadata_csv (str): path to metadata CSV file ('ddi_metadata.csv')
-      - img_dir (str): path to directory storing DDI images
-      - transform (torchvision.transforms): torchvision transforms for dataset images    
-      - skin_tone (list[int]): FST skin tone categories to include. None -> include all skin tones
-      - malignant (list[bool]): malignancy categories to include. None -> include both malignant and benign
-      - diseases (list[str]): diagnoses to include. None -> include all diagnoses 
-    """
+        Args:
+          - random_seed (int): random seed for generating train/val/test splits
+          - batch_size (int): batch size for DataLoader
+          - num_workers (int): num_workers for DataLoader
+          - metadata_csv (str): path to metadata CSV file ('ddi_metadata.csv')
+          - img_dir (str): path to directory storing DDI images
+          - transform (torchvision.transforms): torchvision transforms for dataset images
+          - skin_tone (list[int]): FST skin tone categories to include. None -> include all skin tones
+          - malignant (list[bool]): malignancy categories to include. None -> include both malignant and benign
+          - diseases (list[str]): diagnoses to include. None -> include all diagnoses
+        """
         super().__init__()
         # parameters for DataLoader
         self.seed = random_seed
