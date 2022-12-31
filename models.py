@@ -3,9 +3,10 @@ import torch
 import torchvision
 import gdown
 import pytorch_lightning as pl
+import torchmetrics
 
 """Copied from DDI-Code"""
-# google drive paths to our models
+# Google Drive paths to our models
 MODEL_WEB_PATHS = {
     # base form of models trained on skin data
     'HAM10000': 'https://drive.google.com/uc?id=1ToT8ifJ5lcWh8Ix19ifWlMcMz9UZXcmo',
@@ -17,8 +18,8 @@ MODEL_WEB_PATHS = {
     'CDANN': 'https://drive.google.com/uc?id=1PvvgQVqcrth840bFZ3ddLdVSL7NkxiRK',
 }
 
-# thresholds determined by maximizing F1-score on the test split of the train 
-# dataset for the given algorithm
+# ??? thresholds determined by maximizing F1-score on the test split of the train
+# dataset for the given algorithm ???
 MODEL_THRESHOLDS = {
     'HAM10000': 0.733,
     'DeepDerm': 0.687,
@@ -36,12 +37,13 @@ def load_model(model_name, save_dir='./model', num_classes=78):
     gdown.download(MODEL_WEB_PATHS[model_name], model_path)
 
     # instantiate model with num_outputs
-    model = torchvision.models.inception_v3(pretrained=False,
-                                            transform_input=True,  # ???
+    model = torchvision.models.inception_v3(transform_input=True,  # ???
                                             num_classes=num_classes)
-    # model.fc = torch.nn.Linear(768, num_outputs) # 78 diagnoses
-    # model.AuxLogits.fc = torch.nn.Linear(2048, num_outputs) # 78 diagnoses
-    # ^^^ no longer needed w/ num_classes=num_classes ^^^
+    # Notes to self:
+    # 1. specify pretrained weights w/ argument weights='IMAGENET1K_V1', by default, no pretrained weights are used
+    # 2. setting argument num_classes=num_classes is equivalent to
+    #   - model.fc = torch.nn.Linear(768, num_outputs) # 78 diagnoses
+    #   - model.AuxLogits.fc = torch.nn.Linear(2048, num_outputs) # 78 diagnoses
 
     # load trained model parameters
     model.load_state_dict(torch.load(model_path))
@@ -73,13 +75,31 @@ class DDI_DeepDerm(pl.LightningModule):
         else:  # multi-class classification (78 diagnoses)
             loss = torch.nn.functional.cross_entropy(output, disease_label)
             # ??? https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html
+        self.log('train/loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        # same as training_step but using val_dataset and val_dataloader
+        image, skin_tone, malignant, disease, disease_label = batch
+        output = self(image)
+        if self.num_classes == 2:  # binary classification: malignant vs. benign
+            loss = torch.nn.functional.binary_cross_entropy(output, malignant)
+        else:  # multi-class classification (78 diagnoses)
+            loss = torch.nn.functional.cross_entropy(output, disease_label)
+        self.log('val/loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        # same as above but using test_dataset and test_dataloader
+        image, skin_tone, malignant, disease, disease_label = batch
+        output = self(image)
+        # TODO: add test metrics
 
     def configure_optimizers(self):
         """
-    Inception_v3: https://github.com/pytorch/vision/blob/32d254bbfcf14975f846765775584e61ef25a5bc/torchvision/models/inception.py#L103
-    Conv2d_1a_3x3 -> Conv2d_2a_3x3 -> Conv2d_2b_3x3 -> maxpool1 -> Conv2d_3b_1x1 -> Conv2d_4a_3x3 -> maxpool2 -> Inception Modules ...
-    """
+        Inception_v3: https://github.com/pytorch/vision/blob/32d254bbfcf14975f846765775584e61ef25a5bc/torchvision/models/inception.py#L103
+        Conv2d_1a_3x3 -> Conv2d_2a_3x3 -> Conv2d_2b_3x3 -> maxpool1 -> Conv2d_3b_1x1 -> Conv2d_4a_3x3 -> maxpool2 -> Inception Modules ...
+        """
         children_to_fine_tune = {'first_conv': list(self.model.children())[0:1],  # Conv2d_1a_3x3
                                  'first_block': list(self.model.children())[0:4],  # include up to maxpool1
                                  'before_inception_modules': list(self.model.children())[0:7],  # ... maxpool2
@@ -90,7 +110,8 @@ class DDI_DeepDerm(pl.LightningModule):
         for child in children_to_fine_tune[self.mode]:
             params_to_fine_tune += [param for param in child.parameters()]
 
-        optimizer = torch.optim.Adam(params_to_fine_tune, lr=1e-4)  # match DDI experiments learning rate
+        return torch.optim.Adam(params_to_fine_tune, lr=1e-4)  # match DDI experiments learning rate
+
 
 
 """
@@ -103,7 +124,7 @@ We use the following naming convention for the layers of ResNet-26:
 * First 2 blocks: The first conv layer, and the first block. 
 * Last: The last fully-connected (FC) layer.
 
-For RVT∗-small:
+For RVT-small:
 * First layer: First conv layer inside the first transformer block. 
 * First block: First transformer block.
 * Last: Head or the final fully connected layer.
