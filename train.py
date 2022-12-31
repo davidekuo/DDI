@@ -1,4 +1,6 @@
 import argparse
+from torchvision import transforms as T
+import wandb
 
 # pytorch
 import numpy as np
@@ -12,12 +14,10 @@ from models import load_model
 import pytorch_lightning as pl
 from datasets import DDI_DataModule
 from models import DDI_DeepDerm
+from pytorch_lightning.loggers import WandbLogger
 
 def pytorch(args, config):
-    ### DATA PREPARATION ###
-    # Unpack config
-    transform, skin_tone, malignant, diseases = config
-
+    """DATA PREPARATION"""
     # Read in metadata to DataFrame
     annotations = pd.read_csv(args.annotation_file, index_col=0)
 
@@ -28,9 +28,9 @@ def pytorch(args, config):
     annotations['disease_label'] = annotations['disease'].map(disease2label)
 
     # Parse inputs into lists for downstream processing
-    skin_tone = params_to_list(skin_tone, [12, 34, 56])
-    malignant = params_to_list(malignant, [True, False])
-    diseases = params_to_list(diseases, list(disease2label))
+    skin_tone = params_to_list(config['skin_tone'], [12, 34, 56])
+    malignant = params_to_list(config['malignant'], [True, False])
+    diseases = params_to_list(config['diseases'], list(disease2label))
 
     # Make sure specified inputs are valid
     for s in skin_tone:
@@ -57,7 +57,7 @@ def pytorch(args, config):
     val_loader = DataLoader(val_data, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True, shuffle=True)
 
-    ### TRAINING SETUP ###
+    """TRAINING SETUP"""
     # Load model
     num_classes = 2 if args.classify_malignant else 78  # 78 diagnoses in DDI
     model = load_model(model_name='DeepDerm', num_classes=num_classes)
@@ -72,25 +72,32 @@ def pytorch(args, config):
         params_to_fine_tune += [param for param in child.parameters()]
     optimizer = torch.optim.Adam(params_to_fine_tune, lr=1e-4)  # match DDI experiments learning rate
 
-    # !!! TO DO !!!
-    ### TRAINING LOOP ###
+    """TRAINING LOOP"""
+    # TODO!!!
 
 def pytorchlightning(args, config):
-    # Unpack config
-    transform, skin_tone, malignant, diseases = config
+    # Set random seed
+    pl.seed_everything(args.random_seed)
 
+    # Initialize LightningDataModule, LightningModule, Logger, Trainer
     data_module = DDI_DataModule(args.random_seed,
                                  args.batch_size,
                                  args.num_workers,
                                  args.annotation_file,
                                  args.img_dir,
-                                 transform,
-                                 skin_tone,
-                                 malignant,
-                                 diseases)
+                                 config['transform'],
+                                 config['skin_tone'],
+                                 config['malignant'],
+                                 config['diseases'])
     model = DDI_DeepDerm(classify_malignant=args.classify_malignant,
                          mode=args.finetune_mode)
-    trainer = pl.Trainer(max_epochs=500)  # to match DDI experiments
+    wandb_logger = WandbLogger(project='DDI')
+    trainer = pl.Trainer(deterministic=True,  # for reproducibility
+                         max_epochs=500,  # to match DDI experiments
+                         logger=wandb_logger,
+                         log_every_n_steps=2)  # 2 batches per epoch
+
+    # Train model
     trainer.fit(model, data_module)
 
 if __name__ == "__main__":
@@ -99,18 +106,37 @@ if __name__ == "__main__":
     parser.add_argument('--annotation_file', type=str, default='./ddi_data/ddi_metadata.csv')
     parser.add_argument('--img_dir', type=str, default='./ddi_data/')
     parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--random_seed', type=int, default=0)
     parser.add_argument('--classify_malignant', type=bool, default=True)
     parser.add_argument('--finetune_mode', type=str, default='first_conv')
     args = parser.parse_args()
 
+    # Constants and transforms copied from DDI-Code
+    means = [0.485, 0.456, 0.406]
+    stds = [0.229, 0.224, 0.225]
+    test_transform = T.Compose([
+        lambda x: x.convert('RGB'),
+        T.Resize(299),
+        T.CenterCrop(299),
+        T.ToTensor(),
+        T.Normalize(mean=means, std=stds)
+    ])
+
     # Config
-    transform = None  # TODO: match DDI experiments
+    transform = test_transform  # TODO: match DDI experiments
     skin_tone = None  # [12, 34, 56]
     malignant = None  # [True, False]
     diseases = None
-    config = (transform, skin_tone, malignant, diseases)
+    config = {'transform': transform,
+              'skin_tone': skin_tone,
+              'malignant': malignant,
+              'diseases': diseases,
+              }
 
+    # Log into W&B for experiment tracking
+    wandb.login()
+
+    # Launch experiment
+    pytorchlightning(args, config)
     # pytorch(args, config)
-    # pytorchlightning(args, config)
